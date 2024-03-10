@@ -16,27 +16,11 @@ DATA_LOCK = threading.Lock()
 DEFAULT_PORT = 8000
 
 
-class ServerRequest:
-    """ A Wrapper for requests to server. """
-    def __init__(self, client_id="", req_type="", time_info:str="", ticker:str="") -> None:
-        self.client_df = client_id
-        self.type = req_type
-        self.time_info = time_info
-        self.ticker = ticker
-
-
 class Server:
 
     def __init__(self, supported_assets):
-        self.request_queue = []
-
         self.supported_assets = set(supported_assets)
-
-        self.clients = dict()
-        self.latest_client_number = 1
-        
         self.DG = data_grabber.DataGrabber()
-
         if self.supported_assets:
             df = self.run_process()
             self.save_report(df)
@@ -71,7 +55,6 @@ class Server:
     def _calc_pnl( self, signals : pd.DataFrame, prices : pd.DataFrame ) -> pd.DataFrame:
         """ Given signal and prices, return the pnl of the signal. """
         return signals.shift(1) * prices.diff()
-    
 
     def run_process( 
         self,
@@ -168,76 +151,6 @@ class Server:
             self.save_report(df)
     
 
-    # # ************************ #
-    # # ------------------------ #
-    # # Request Processing
-    # # ------------------------ #
-    # # ************************ #
-
-    # def make_request(self, **kwargs):
-    #     """ Process new request from client which is passed as an RPC call. """
-    #     ...
-
-    # def add_new_request(self, req : ServerRequest):
-    #     """ Add new request from client. """
-    #     with REQUESTS_LOCK:
-    #         self.request_queue.append(req)
-    
-    # def is_request_queue_empty(self):
-    #     return len(self.request_queue) == 0
-
-    # def get_request_to_process(self):
-    #     """ Assumes that the request queue is not empty. Returns the request to process. """
-    #     with REQUESTS_LOCK:
-    #         req = self.request_queue.pop(0)
-
-    #     if req.req_type == "data":
-    #         time_info = dt.datetime.strptime(req.time_info, "%Y-%m-%d-%H:%M")
-    #         retval = self.client_get_data( time_info.replace(tzinfo=zoneinfo.ZoneInfo("US/Eastern")) )
-
-    #         # TODO: Return value to client -> client is specified in req.client_id.
-
-    #     elif req.req_type == "add":
-    #         self.client_add_ticker(req.ticker)
-    #     elif req.req_type == "delete":
-    #         self.client_delete_ticker(req.ticker)
-    #     elif req.req_type == "report":
-    #         self.client_reconstruct_reports()
-    #     else:
-    #         print("Invalid request given to parse.")
-
-
-    # # ************************ #
-    # # ------------------------ #
-    # # Client Logic.
-    # # ------------------------ #
-    # # ************************ #
-
-    # def register_client(self) -> int:
-    #     # store client information
-    #     # return client id
-    #     client_id = 0
-    #     with CLIENTS_LOCK:
-    #         ret = self.latest_client_number
-    #         self.latest_client_number += 1
-    #         self.clients[client_id] = None          
-    #         # This can be expanded to include assets supported per client as well as timeframe the client is interested in.
-    #         # This will help in caching and hence increasing the efficiency of our system with a more flexible offering.
-
-    #     return client_id
-    
-    # def delete_client(self, client_id) -> bool:
-    #     """ 
-    #     Returns true if successfully deleted. Server will no longer serve 
-    #     this client. The client will have to register again. 
-    #     """
-    #     with CLIENTS_LOCK:
-    #         del self.clients[client_id]
-    #     return True
-
-
-
-
 def _help():
     s = """
     ERROR: CLI arguments can't be parsed.
@@ -279,25 +192,11 @@ def _process_args(args):
 if __name__ == '__main__':
 
     supported_tickers, port = _process_args( sys.argv[1:] )
-
     print(f"Server initialized with supported_tickers: {supported_tickers} and port: {port}")
         
-    # global SERVER
-    # SERVER = Server(supported_tickers, port)
-
-    # while True:
-
-    #     if SERVER.is_request_queue_empty():
-    #         # we have one or more requests to process
-    #         req = SERVER.process_request()
-
     server = Server(supported_assets=supported_tickers)
-    server_rpc = rpc.RPCServer(port=port)
 
+    server_rpc = rpc.RPCServer(port=port)
     server_rpc.registerInstance( server )
 
     server_rpc.run()
-
-            
-
-

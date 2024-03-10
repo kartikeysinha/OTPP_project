@@ -21,6 +21,7 @@ class Client:
         # make request to client to retreive client_id
         self.client_rpc.connect()
     
+
     """
     CLI support
     """
@@ -35,9 +36,6 @@ class Client:
         time_spec : str
             Ensure format is "YYYY-MM-DD-HH:MM"
         """
-
-        # Format time
-        
         # get return value
         retval = self.client_rpc.client_get_data( time_spec )
         # print return value
@@ -76,13 +74,19 @@ class Client:
 def _help_CLI():
     s = """
     ERROR: CLI arguments can't be parsed.
+    Allowed CLI arguments:
+        --port XXXX
     """
     print(s)
 
 def _help():
     s = """
     Supported arguments:
-
+    > data YYYY-MM-DD-HH:MM     : get data for the most recent calculation.
+    > add TICKER                : Add ticker to the server managed tickers.
+    > delete TICKER             : Delete ticker from the server managed tickers.
+    > report                    : recalculate the report with the latest data for the server managed tickers.
+    > q                         : quit the client.
     """
     print(s)
 
@@ -119,19 +123,6 @@ if __name__ == '__main__':
         _help_CLI()
         raise
         
-    # global SERVER
-    # SERVER = Server(supported_tickers, port)
-
-    # while True:
-
-    #     if SERVER.is_request_queue_empty():
-    #         # we have one or more requests to process
-    #         req = SERVER.process_request()
-
     client = Client(port=port)
 
     _process_arguments(client)
-
-
-
-
