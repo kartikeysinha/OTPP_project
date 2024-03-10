@@ -1,20 +1,25 @@
-
+import sys
+import rpc
+import zoneinfo
+import datetime as dt
 
 class Client:
 
-    def __init__(self) -> None:
+    def __init__(self, port : int = rpc.DEFAULT_PORT) -> None:
         # register with server.
+        self.client_rpc = rpc.RPCClient(port=port)
+
         self.register()
     
     def __exit__(self) -> None:
         """ De-register with the server """
-        # make request to server with self.id
-        ...
+        self.client_rpc.disconnect()
+        
     
     def register(self) -> None:
         """ Register with the server """
         # make request to client to retreive client_id
-        self.id = 0
+        self.client_rpc.connect()
     
     """
     CLI support
@@ -31,10 +36,10 @@ class Client:
             Ensure format is "YYYY-MM-DD-HH:MM"
         """
 
-        # Make request to server : include self.id ; time_spec
-        ...
+        # Format time
+        
         # get return value
-        retval = " Got data "
+        retval = self.client_rpc.client_get_data( time_spec )
         # print return value
         if retval:
             print(retval)
@@ -53,7 +58,10 @@ class Client:
             Either 'add' or 'delete'
         """
         # Make request to server : include self.id ; ticker; operation
-        ...
+        if operation == 'add':
+            self.client_rpc.client_add_ticker(ticker.upper())
+        else:
+            self.client_rpc.client_delete_ticker(ticker.upper())
 
     
     def reconstruct_report(self) -> None:
@@ -61,12 +69,69 @@ class Client:
         Instruct client to recomstruct report with the latest data, signal, pnl.
         """
         # Make request to server : include self.id
-        ...
+        self.client_rpc.client_reconstruct_reports()
 
 
 
+def _help_CLI():
+    s = """
+    ERROR: CLI arguments can't be parsed.
+    """
+    print(s)
+
+def _help():
+    s = """
+    Supported arguments:
+
+    """
+    print(s)
 
 
-if __name__ == "__main__":
-    ...
+def _process_arguments( client : Client ):
+    while True:
+        inp = input("> ")
+
+        if inp.startswith("data "):
+            client.get_data(inp.split(" ")[1])
+
+        elif inp.startswith("add "):
+            client.change_ticker(inp.split(" ")[1], "add")
+
+        elif inp.startswith("delete "):
+            client.change_ticker(inp.split(" ")[1], "delete")
+
+        elif inp.startswith("report"):
+            client.reconstruct_report()
+
+        elif inp.startswith("q"):
+            break
+        else:
+            _help()
+
+
+if __name__ == '__main__':
+
+    port = rpc.DEFAULT_PORT
+
+    if len(sys.argv) > 1 and sys.argv[1] == '--port':
+        port = int(sys.argv[2])
+    elif len(sys.argv) > 1:
+        _help_CLI()
+        raise
+        
+    # global SERVER
+    # SERVER = Server(supported_tickers, port)
+
+    # while True:
+
+    #     if SERVER.is_request_queue_empty():
+    #         # we have one or more requests to process
+    #         req = SERVER.process_request()
+
+    client = Client(port=port)
+
+    _process_arguments(client)
+
+
+
 

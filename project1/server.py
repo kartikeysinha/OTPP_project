@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import threading
 import zoneinfo
+import rpc
 
 import data_grabber
 
@@ -26,11 +27,10 @@ class ServerRequest:
 
 class Server:
 
-    def __init__(self, supported_assets, port):
+    def __init__(self, supported_assets):
         self.request_queue = []
 
         self.supported_assets = set(supported_assets)
-        self.port = port
 
         self.clients = dict()
         self.latest_client_number = 1
@@ -110,34 +110,33 @@ class Server:
     # ------------------------ #
     # ************************ #
 
-    def _get_data(self, time_spec : dt.datetime) -> pd.DataFrame:
+    def client_get_data( self, time_spec : str ) -> pd.DataFrame:
         """
         Support the 'data' call from client.
         """
-        def nearest(items, pivot):
-            return min(items, key=lambda x: pivot - x if pivot >= x else dt.timedelta(days=10))
-
-        relevant_data = pd.DataFrame()
-
+        # Get stored data
         with DATA_LOCK:
             df = pd.read_csv("report.csv", index_col="datetime")
-        
+        # Convert index to datetime
         df.index = pd.to_datetime(df.index)
+        # Get nearest index that is lesser than the time_spec
+        time_spec = dt.datetime.strptime(time_spec, "%Y-%m-%d-%H:%M").replace(tzinfo=zoneinfo.ZoneInfo("US/Eastern"))
+        idx = min(df.index, key=lambda x: time_spec - x if time_spec >= x else dt.timedelta(days=10))
 
-        idx = nearest( df.index, time_spec )
+        # If data doesn't exist, return an empty string
         if idx > time_spec:
             return ""
 
+        # Data does exist -> get relevant data 
         relevant_data = df.loc[idx, ['ticker', 'price', 'signal'] ].reset_index(drop=True)
-        
-        # Format return
+        # Format return string
         s = ""
         for i in relevant_data.index:
             s += f'{relevant_data.loc[i, "ticker"]}\t\t{np.round(relevant_data.loc[i, "price"],2)},{relevant_data.loc[i, "signal"]}\n'
         
         return s
 
-    def _add_ticker(self, ticker : str) -> None:
+    def client_add_ticker(self, ticker : str) -> None:
         """
         Support the add ticker call from client.
         """
@@ -148,18 +147,19 @@ class Server:
                 df = pd.read_csv("report.csv", index_col="datetime")
                 self.save_report(pd.concat([new_df, df], axis=0, ignore_index=False))
         
-    def _delete_ticker(self, ticker : str) -> None:
+    def client_delete_ticker(self, ticker : str) -> None:
         """
         Delete ticker from client offering.
         """
         with DATA_LOCK:
             if ticker in self.supported_assets:
                 df = pd.read_csv("report.csv", index_col="datetime")
+                df.index = pd.to_datetime(df.index)
                 df = df.loc[~(df['ticker'] == ticker)]
                 self.supported_assets.remove(ticker)
                 self.save_report(df)
 
-    def _reconstruct_reports(self) -> None:
+    def client_reconstruct_reports(self) -> None:
         """
         Support the 'report' call from client.
         """
@@ -168,72 +168,72 @@ class Server:
             self.save_report(df)
     
 
-    # ************************ #
-    # ------------------------ #
-    # Request Processing
-    # ------------------------ #
-    # ************************ #
+    # # ************************ #
+    # # ------------------------ #
+    # # Request Processing
+    # # ------------------------ #
+    # # ************************ #
 
-    def make_request(self, **kwargs):
-        """ Process new request from client which is passed as an RPC call. """
-        ...
+    # def make_request(self, **kwargs):
+    #     """ Process new request from client which is passed as an RPC call. """
+    #     ...
 
-    def add_new_request(self, req : ServerRequest):
-        """ Add new request from client. """
-        with REQUESTS_LOCK:
-            self.request_queue.append(req)
+    # def add_new_request(self, req : ServerRequest):
+    #     """ Add new request from client. """
+    #     with REQUESTS_LOCK:
+    #         self.request_queue.append(req)
     
-    def is_request_queue_empty(self):
-        return len(self.request_queue) == 0
+    # def is_request_queue_empty(self):
+    #     return len(self.request_queue) == 0
 
-    def get_request_to_process(self):
-        """ Assumes that the request queue is not empty. Returns the request to process. """
-        with REQUESTS_LOCK:
-            req = self.request_queue.pop(0)
+    # def get_request_to_process(self):
+    #     """ Assumes that the request queue is not empty. Returns the request to process. """
+    #     with REQUESTS_LOCK:
+    #         req = self.request_queue.pop(0)
 
-        if req.req_type == "data":
-            time_info = dt.datetime.strptime(req.time_info, "%Y-%m-%d-%H:%M")
-            retval = self._get_data( time_info.replace(tzinfo=zoneinfo.ZoneInfo("US/Eastern")) )
+    #     if req.req_type == "data":
+    #         time_info = dt.datetime.strptime(req.time_info, "%Y-%m-%d-%H:%M")
+    #         retval = self.client_get_data( time_info.replace(tzinfo=zoneinfo.ZoneInfo("US/Eastern")) )
 
-            # TODO: Return value to client -> client is specified in req.client_id.
+    #         # TODO: Return value to client -> client is specified in req.client_id.
 
-        elif req.req_type == "add":
-            self._add_ticker(req.ticker)
-        elif req.req_type == "delete":
-            self._delete_ticker(req.ticker)
-        elif req.req_type == "report":
-            self._reconstruct_reports()
-        else:
-            print("Invalid request given to parse.")
+    #     elif req.req_type == "add":
+    #         self.client_add_ticker(req.ticker)
+    #     elif req.req_type == "delete":
+    #         self.client_delete_ticker(req.ticker)
+    #     elif req.req_type == "report":
+    #         self.client_reconstruct_reports()
+    #     else:
+    #         print("Invalid request given to parse.")
 
 
-    # ************************ #
-    # ------------------------ #
-    # Client Logic.
-    # ------------------------ #
-    # ************************ #
+    # # ************************ #
+    # # ------------------------ #
+    # # Client Logic.
+    # # ------------------------ #
+    # # ************************ #
 
-    def register_client(self) -> int:
-        # store client information
-        # return client id
-        client_id = 0
-        with CLIENTS_LOCK:
-            ret = self.latest_client_number
-            self.latest_client_number += 1
-            self.clients[client_id] = None          
-            # This can be expanded to include assets supported per client as well as timeframe the client is interested in.
-            # This will help in caching and hence increasing the efficiency of our system with a more flexible offering.
+    # def register_client(self) -> int:
+    #     # store client information
+    #     # return client id
+    #     client_id = 0
+    #     with CLIENTS_LOCK:
+    #         ret = self.latest_client_number
+    #         self.latest_client_number += 1
+    #         self.clients[client_id] = None          
+    #         # This can be expanded to include assets supported per client as well as timeframe the client is interested in.
+    #         # This will help in caching and hence increasing the efficiency of our system with a more flexible offering.
 
-        return client_id
+    #     return client_id
     
-    def delete_client(self, client_id) -> bool:
-        """ 
-        Returns true if successfully deleted. Server will no longer serve 
-        this client. The client will have to register again. 
-        """
-        with CLIENTS_LOCK:
-            del self.clients[client_id]
-        return True
+    # def delete_client(self, client_id) -> bool:
+    #     """ 
+    #     Returns true if successfully deleted. Server will no longer serve 
+    #     this client. The client will have to register again. 
+    #     """
+    #     with CLIENTS_LOCK:
+    #         del self.clients[client_id]
+    #     return True
 
 
 
@@ -253,7 +253,7 @@ def _process_args(args):
     """ Process the Command Line Arguments for the server. """
 
     supported_tickers = []
-    port = DEFAULT_PORT
+    port = rpc.DEFAULT_PORT
     
     try:
         i = 0
@@ -282,14 +282,21 @@ if __name__ == '__main__':
 
     print(f"Server initialized with supported_tickers: {supported_tickers} and port: {port}")
         
-    global SERVER
-    SERVER = Server(supported_tickers, port)
+    # global SERVER
+    # SERVER = Server(supported_tickers, port)
 
-    while True:
+    # while True:
 
-        if SERVER.is_request_queue_empty():
-            # we have one or more requests to process
-            req = SERVER.process_request()
+    #     if SERVER.is_request_queue_empty():
+    #         # we have one or more requests to process
+    #         req = SERVER.process_request()
+
+    server = Server(supported_assets=supported_tickers)
+    server_rpc = rpc.RPCServer(port=port)
+
+    server_rpc.registerInstance( server )
+
+    server_rpc.run()
 
             
 
