@@ -111,7 +111,7 @@ class YahooFinance():
         # Melt dataframe to remove the multi-columns structure
         tmp_df = df.melt(ignore_index=False).reset_index()  
         # Establish common structure as other return points -> this still has 2 columns - needs small processing to remove
-        tmp_df = tmp_df.pivot(columns=["Price"], index=["Datetime", "Ticker"]).reset_index(level=1)
+        tmp_df = tmp_df.pivot(columns=["Price"], index=["datetime", "Ticker"]).reset_index(level=1)
 
         # Construct new column names
         new_column_names = [x[1].lower() for x in tmp_df.columns]
@@ -121,11 +121,10 @@ class YahooFinance():
         tmp_df = tmp_df.droplevel(level=0, axis=1)
         tmp_df.columns = new_column_names
 
-        tmp_df.index.name = tmp_df.index.name.lower()
-
         return tmp_df
     
     def _clean_data(self, df : pd.DataFrame) -> pd.DataFrame:
+        df.index.name = df.index.name.lower()
         return df.ffill()
 
     def get_candles(
@@ -142,13 +141,14 @@ class YahooFinance():
             tickers = [tickers]
         
         df = yf.download(tickers=tickers, start=start_date, end=end_date, interval=freq, prepost=True)
+        df = self._clean_data(df)
 
         if len(tickers) == 1:
             df.columns = [x.lower() for x in df.columns]
             df['ticker'] = tickers[0]
             return df
 
-        df = self._clean_data(df)
+        
         return self._format_yfinance_return_df(df)
 
 
