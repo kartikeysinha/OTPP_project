@@ -8,3 +8,4 @@ OTPP Associate take home project.
 
 NOTE: Provided code lives in `project2`. Provided data lives in `project/data`.
 
+More information regarding the specific projects are provided in the `README.md` files in the specific project directories.
