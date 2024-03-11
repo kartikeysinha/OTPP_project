@@ -7,6 +7,7 @@ import finnhub
 import datetime as dt
 import yfinance as yf
 import dateutil
+import zoneinfo
 
 dotenv.load_dotenv()
 
@@ -59,7 +60,14 @@ class AlphaVantageAPI():
             tmp_df['ticker'] = sym
             frames.append( tmp_df )
         
-        return pd.concat( frames )   
+        df = pd.concat( frames ) 
+        df.index.name = "datetime"
+        df.index = pd.to_datetime(df.index)
+        df.index = df.index.tz_localize(zoneinfo.ZoneInfo("US/Eastern"))
+        for col in df.columns:
+            df[col] = df[col].astype(float, errors='ignore')
+
+        return df
 
 
 """
@@ -124,6 +132,9 @@ class YahooFinance():
         return tmp_df
     
     def _clean_data(self, df : pd.DataFrame) -> pd.DataFrame:
+        df.index = pd.to_datetime(df.index)
+        if df.index.tz is None:
+            df.index = df.index.tz_localize(zoneinfo.ZoneInfo("US/Eastern"))
         df.index.name = df.index.name.lower()
         return df.ffill()
 
@@ -141,13 +152,15 @@ class YahooFinance():
             tickers = [tickers]
         
         df = yf.download(tickers=tickers, start=start_date, end=end_date, interval=freq, prepost=True)
+        if df.empty:
+            return df
+        
         df = self._clean_data(df)
 
         if len(tickers) == 1:
             df.columns = [x.lower() for x in df.columns]
-            df['ticker'] = tickers[0]
+            df['ticker'] = list(tickers)[0]
             return df
-
         
         return self._format_yfinance_return_df(df)
 
@@ -173,7 +186,7 @@ class DataGrabber:
     def get_prices(
         self,
         tickers : str | list[str],
-        frequency : str = "1min",
+        frequency : int = 1,
         time_req : str | dt.datetime = dt.datetime.now()
     ) -> pd.Series:
         
@@ -182,11 +195,21 @@ class DataGrabber:
             time_req = dateutil.parser.parse(time_req)
 
         # try:
-        #     df = self.AV.get_candles(tickers=tickers, interval=frequency, month=time_req.strftime("%Y-%m"))
+        #     print("NOTE: Getting data from Alpha Vantage.")
+        #     df = self.AV.get_candles(tickers=tickers, interval=str(frequency)+"min", month=time_req.strftime("%Y-%m"))
+            
         # except:
-        #     print("NOTE: Getting the latest data available.")
-        #     df = self.YF.get_candles(tickers=tickers, freq=frequency[:2])
-        df = self.YF.get_candles(tickers=tickers, freq=frequency[:2])
+
+        #     print("NOTE: Getting data from Yahoo Finance.")
+        df = self.YF.get_candles(
+            tickers=tickers, 
+            end_date=time_req.strftime("%Y-%m-%d"), 
+            start_date=(time_req - dt.timedelta(days=7)).strftime("%Y-%m-%d"),
+            freq = str(frequency) + "m"
+        )
+
+        if df.empty:
+            return df
 
         return df[['ticker', 'close']].reset_index().pivot(index='datetime', columns='ticker').droplevel(level=0, axis=1)
 
